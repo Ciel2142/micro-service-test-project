@@ -4,6 +4,9 @@ import com.example.demo.models.Movie;
 import com.example.demo.models.MovieRating;
 import com.example.demo.models.MovieRatings;
 import com.example.demo.models.Ratings;
+import com.example.demo.services.MovieInfoService;
+import com.example.demo.services.UserRatingInfo;
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -27,37 +30,24 @@ public class MainHandler {
     @Qualifier("testMake")
     WebClient.Builder webClient;
 
+    @Autowired
+    UserRatingInfo userRatingInfo;
+
+    @Autowired
+    MovieInfoService movieInfoService;
 
     @GetMapping("/{userId}")
     public MovieRatings getUserRating(@PathVariable String userId) {
-        Ratings ratingMono = Optional.ofNullable(webClient.
-                build().
-                get().
-                uri("http://rating-service/rating/" + userId).retrieve().
-                bodyToMono(Ratings.class).
-                block()).orElseThrow(() -> new ResponseStatusException(
+        Ratings ratings = Optional.ofNullable(
+                userRatingInfo.getRatings(userId)).
+                orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "No movies had been rated yet"));
 
-        return new MovieRatings(
-                ratingMono.
+        return new MovieRatings(ratings.
                         getRatings().
                         stream().
-                        map(rating -> {
-                            Movie movie = webClient.build().
-                                    get().
-                                    uri("http://movie-service/movie/" + rating.getMovieId()).
-                                    retrieve().bodyToMono(Movie.class).
-                                    block();
-                            return new MovieRating(
-                                    movie.getTitle(),
-                                    movie.getDescription(),
-                                    rating.getRating());
-                        }).collect(Collectors.toList()));
+                        map(movieInfoService::getMovieRating).
+                        collect(Collectors.toList()));
 
-    }
-
-    @GetMapping("/s")
-    public Mono<Movie> getMovie() {
-        return webClient.build().get().uri("http://movie-service/movie/1").retrieve().bodyToMono(Movie.class);
     }
 }
